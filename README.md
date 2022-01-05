@@ -1,14 +1,22 @@
 # Simple local log4j vulnerability scanner
 
+![logo](logo.png)
+
 (Written in Go because, you know, "write once, run anywhere.")
 
 This is a simple tool that can be used to find vulnerable instances of
-log4j 1.x and 2.x (CVE-2019-17571, CVE-2021-44228) in installations of
-Java software such as web applications. JAR and WAR archives are
-inspected and class files that are known to be vulnerable are flagged.
-The scan happens recursively: WAR files containing WAR files
-containing JAR files containing vulnerable class files ought to be
-flagged properly.
+log4j 1.x and 2.x in installations of Java software such as web
+applications. JAR and WAR archives are inspected and class files that
+are known to be vulnerable are flagged. The scan happens recursively:
+WAR files containing WAR files containing JAR files containing
+vulnerable class files ought to be flagged properly.
+
+Currently recognized vulnerabilities are:
+- CVE-2019-17571 (1.x)
+- CVE-2021-44228
+- CVE-2021-45105
+- CVE-2021-45046 (not reported by default due to lower severity)
+- CVE-2021-44832 (not reported by default due to lower severity)
 
 The scan tool currently checks for known build artifacts that have
 been obtained through Maven. From-source rebuilds as they are done for
@@ -25,7 +33,8 @@ page.
 # Using the scanner
 
 ```
-$ ./local-log4j-vuln-scanner [--verbose] [--quiet] [--ignore-v1] \
+$ ./local-log4j-vuln-scanner [--verbose] [--quiet] \
+    [--ignore-v1] [--ignore-vulns=...] \
     [--exclude /path/to/exclude …] [--log /path/to/file.log] \
     /path/to/app1 /path/to/app2 …
 ```
@@ -36,6 +45,11 @@ The `--quiet` flag will supress output except for indicators of a known vulnerab
 
 The `--ignore-v1` flag will _exclude_ checks for log4j 1.x vulnerabilities.
 
+The `--ignore-vulns` flag allows _excluding_ checks for specific
+vulnerabilities. e.g. `-ignore-vulns=CVE-2021-45046,CVE-2021-44832`.
+To check for all known vulnerabilities, pass an empty list like so:
+`-ignore-vulns=`
+
 The `--log` flag allows everythig to be written to a log file instead of stdout/stderr.
 
 Use the `--exclude` flag to exclude subdirectories from being scanned. Can be used multiple times.
@@ -45,8 +59,9 @@ messages like the following are printed to standard output:
 ``` console
 ./local-log4j-vuln-scanner - a simple local log4j vulnerability scanner
 
-indicator for vulnerable component found in /path/to/vuln/log4shell-vulnerable-app-0.0.1-SNAPSHOT.war::WEB-INF/lib/log4j-core-2.14.1.jar (org/apache/logging/log4j/core/net/JndiManager$JndiManagerFactory.class): log4j 2.14.0-2.14.1
-indicator for vulnerable component found in /path/to/vuln/log4shell-vulnerable-app-0.0.1-SNAPSHOT.war::WEB-INF/lib/log4j-core-2.14.1.jar (org/apache/logging/log4j/core/net/JndiManager.class): log4j 2.14.0-2.14.1
+Checking for vulnerabilities: CVE-2019-17571, CVE-2021-44228, CVE-2021-45105
+examining /path/to/vuln/log4shell-vulnerable-app-0.0.1-SNAPSHOT.war
+indicator for vulnerable component found in /path/to/vuln/Downloads/log4shell-vulnerable-app-0.0.1-SNAPSHOT.war::WEB-INF/lib/log4j-core-2.14.1.jar (org/apache/logging/log4j/core/net/JndiManager.class): JndiManager.class log4j 2.14.0-2.14.1 CVE-2021-44228, CVE-2021-45105
 
 Scan finished
 ```

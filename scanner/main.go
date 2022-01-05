@@ -36,7 +36,9 @@ func handleTar(path string, ra io.Reader, sz int64) {
 			break
 		}
 		if err != nil {
-			fmt.Fprintf(logFile, "can't open archive file: %s (size %d): %v\n", path, sz, err)
+			if strings.Contains(path, ".tar.") {
+				fmt.Fprintf(logFile, "can't open archive file: %s (size %d): %v\n", path, sz, err)
+			}
 			return
 		}
 		if file.Typeflag == tar.TypeDir {
@@ -119,8 +121,9 @@ func identifyClassFile(fr io.ReadCloser, path string, name string) {
 		}
 		return
 	}
-	if desc := filter.IsVulnerableClass(buf.Bytes(), name, !ignoreV1); desc != "" {
-		fmt.Fprintf(logFile, "indicator for vulnerable component found in %s (%s): %s\n", path, name, desc)
+	if info := filter.IsVulnerableClass(buf.Bytes(), name, vulns); info != nil {
+		fmt.Fprintf(logFile, "indicator for vulnerable component found in %s (%s): %s %s %s\n",
+			path, name, info.Filename, info.Version, info.Vulnerabilities&vulns)
 	}
 }
 
@@ -148,6 +151,8 @@ var excludes excludeFlags
 var verbose bool
 var logFileName string
 var quiet bool
+var vulns filter.Vulnerabilities
+var ignoreVulns = filter.CVE_2021_45105 | filter.CVE_2021_44832
 var ignoreV1 bool
 
 func main() {
@@ -156,7 +161,14 @@ func main() {
 	flag.StringVar(&logFileName, "log", "", "log file to write output to")
 	flag.BoolVar(&quiet, "quiet", false, "no ouput unless vulnerable")
 	flag.BoolVar(&ignoreV1, "ignore-v1", false, "ignore log4j 1.x versions")
+	flag.Var(&ignoreVulns, "ignore-vulns", "ignore vulnerabilities")
+
 	flag.Parse()
+
+	if ignoreV1 {
+		ignoreVulns |= filter.CVE_2019_17571
+	}
+	vulns = filter.CheckAllVulnerabilities ^ ignoreVulns
 
 	if !quiet {
 		fmt.Printf("%s - a simple local log4j vulnerability scanner\n\n", filepath.Base(os.Args[0]))
@@ -178,13 +190,19 @@ func main() {
 		defer f.Close()
 	}
 
+	fmt.Fprintf(logFile, "Checking for vulnerabilities: %s\n", vulns)
+
 	for _, root := range flag.Args() {
 		filepath.Walk(filepath.Clean(root), func(path string, info os.FileInfo, err error) error {
+			if !quiet {
+				fmt.Fprintf(logFile, "examining %s\n", path)
+			}
 			if err != nil {
 				fmt.Fprintf(errFile, "%s: %s\n", path, err)
 				return nil
 			}
-			if excludes.Has(path) {
+			if excludes.Has(path) && !quiet {
+				fmt.Fprintf(logFile, "Skipping %s\n", path)
 				return filepath.SkipDir
 			}
 			if info.IsDir() {
@@ -200,10 +218,6 @@ func main() {
 				defer f.Close()
 				sz, err := f.Seek(0, os.SEEK_END)
 				if err != nil {
-					fmt.Fprintf(errFile, "can't seek in %s: %v\n", path, err)
-					return nil
-				}
-				if _, err := f.Seek(0, os.SEEK_END); err != nil {
 					fmt.Fprintf(errFile, "can't seek in %s: %v\n", path, err)
 					return nil
 				}
